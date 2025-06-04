@@ -22,6 +22,11 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL("/login", request.url))
   }
 
+  // Asegurarse de que no haya redirecciones incorrectas para la ruta de proyectos
+  if (pathname === "/dashboard/projects") {
+    return NextResponse.next()
+  }
+
   return NextResponse.next()
 }
 

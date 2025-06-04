@@ -136,88 +136,158 @@ export default async function DashboardPage() {
                       scope="col"
                       className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
                     >
+                      Progreso
+                    </th>
+                    <th
+                      scope="col"
+                      className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
+                    >
                       Acciones
                     </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200 bg-white">
-                  {projects.slice(0, 5).map((project) => (
-                    <tr key={project.id} className="hover:bg-gray-50">
-                      <td className="whitespace-nowrap px-6 py-4">
-                        <Link
-                          href={`/dashboard/projects/${project.id}`}
-                          className="font-medium text-blue-600 hover:underline"
-                        >
-                          {project.name}
-                        </Link>
-                      </td>
-                      <td className="whitespace-nowrap px-6 py-4">
-                        <span
-                          className={`inline-flex rounded-full px-2 text-xs font-semibold leading-5 ${
-                            project.status === "active"
-                              ? "bg-green-100 text-green-800"
-                              : project.status === "completed"
-                                ? "bg-blue-100 text-blue-800"
-                                : project.status === "on_hold"
-                                  ? "bg-yellow-100 text-yellow-800"
-                                  : "bg-red-100 text-red-800"
-                          }`}
-                        >
-                          {project.status === "active"
-                            ? "Activo"
-                            : project.status === "completed"
-                              ? "Completado"
-                              : project.status === "on_hold"
-                                ? "En Espera"
-                                : "Cancelado"}
-                        </span>
-                      </td>
-                      <td className="whitespace-nowrap px-6 py-4">
-                        <span
-                          className={`inline-flex rounded-full px-2 text-xs font-semibold leading-5 ${
-                            project.priority === "low"
-                              ? "bg-gray-100 text-gray-800"
-                              : project.priority === "medium"
-                                ? "bg-blue-100 text-blue-800"
-                                : project.priority === "high"
-                                  ? "bg-orange-100 text-orange-800"
-                                  : "bg-red-100 text-red-800"
-                          }`}
-                        >
-                          {project.priority === "low"
-                            ? "Baja"
-                            : project.priority === "medium"
-                              ? "Media"
-                              : project.priority === "high"
-                                ? "Alta"
-                                : "Urgente"}
-                        </span>
-                      </td>
-                      <td className="whitespace-nowrap px-6 py-4">
-                        <Link
-                          href={`/dashboard/projects/${project.id}/edit`}
-                          className="mr-2 inline-flex h-8 w-8 items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-500"
-                          title="Editar proyecto"
-                        >
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            width="16"
-                            height="16"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            className="lucide lucide-pencil"
+                  {projects.slice(0, 5).map((project) => {
+                    // Calcular el progreso basado en tareas completadas vs. total
+                    const completedTasks = project.completed_tasks || 0
+                    const totalTasks = project.total_tasks || 0
+                    const progressPercentage = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
+
+                    // Determinar el color de la barra de progreso
+                    let progressColor = "bg-blue-500"
+                    if (progressPercentage >= 100) {
+                      progressColor = "bg-green-500"
+                    } else if (progressPercentage >= 75) {
+                      progressColor = "bg-teal-500"
+                    } else if (progressPercentage >= 50) {
+                      progressColor = "bg-yellow-500"
+                    } else if (progressPercentage >= 25) {
+                      progressColor = "bg-orange-500"
+                    } else {
+                      progressColor = "bg-red-500"
+                    }
+
+                    return (
+                      <tr key={project.id} className="hover:bg-gray-50">
+                        <td className="whitespace-nowrap px-6 py-4">
+                          <Link
+                            href={`/dashboard/projects/${project.id}`}
+                            className="font-medium text-blue-600 hover:underline"
                           >
-                            <path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
-                            <path d="m15 5 4 4" />
-                          </svg>
-                        </Link>
-                      </td>
-                    </tr>
-                  ))}
+                            {project.name}
+                          </Link>
+                          {!project.is_owner && (
+                            <div className="mt-1 text-xs text-gray-500">Propietario: {project.owner_name}</div>
+                          )}
+                        </td>
+                        <td className="whitespace-nowrap px-6 py-4">
+                          <span
+                            className={`inline-flex rounded-full px-2 text-xs font-semibold leading-5 ${
+                              project.status === "active"
+                                ? "bg-green-100 text-green-800"
+                                : project.status === "completed"
+                                  ? "bg-blue-100 text-blue-800"
+                                  : project.status === "on_hold"
+                                    ? "bg-yellow-100 text-yellow-800"
+                                    : "bg-red-100 text-red-800"
+                            }`}
+                          >
+                            {project.status === "active"
+                              ? "Activo"
+                              : project.status === "completed"
+                                ? "Completado"
+                                : project.status === "on_hold"
+                                  ? "En Espera"
+                                  : "Cancelado"}
+                          </span>
+                        </td>
+                        <td className="whitespace-nowrap px-6 py-4">
+                          <span
+                            className={`inline-flex rounded-full px-2 text-xs font-semibold leading-5 ${
+                              project.priority === "low"
+                                ? "bg-gray-100 text-gray-800"
+                                : project.priority === "medium"
+                                  ? "bg-blue-100 text-blue-800"
+                                  : project.priority === "high"
+                                    ? "bg-orange-100 text-orange-800"
+                                    : "bg-red-100 text-red-800"
+                            }`}
+                          >
+                            {project.priority === "low"
+                              ? "Baja"
+                              : project.priority === "medium"
+                                ? "Media"
+                                : project.priority === "high"
+                                  ? "Alta"
+                                  : "Urgente"}
+                          </span>
+                        </td>
+                        <td className="whitespace-nowrap px-6 py-4">
+                          <div className="flex items-center">
+                            <div className="w-full max-w-[120px]">
+                              <div className="h-2 w-full rounded-full bg-gray-200">
+                                <div
+                                  className={`h-2 rounded-full ${progressColor}`}
+                                  style={{ width: `${progressPercentage}%` }}
+                                ></div>
+                              </div>
+                            </div>
+                            <span className="ml-2 text-xs font-medium text-gray-600">
+                              {progressPercentage}% ({completedTasks}/{totalTasks})
+                            </span>
+                          </div>
+                        </td>
+                        <td className="whitespace-nowrap px-6 py-4">
+                          <Link
+                            href={`/dashboard/projects/${project.id}/edit`}
+                            className="mr-2 inline-flex h-8 w-8 items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-500"
+                            title="Editar proyecto"
+                          >
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              width="16"
+                              height="16"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              className="lucide lucide-pencil"
+                            >
+                              <path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+                              <path d="m15 5 4 4" />
+                            </svg>
+                          </Link>
+                          <Link
+                            href={`/dashboard/projects/${project.id}/tasks`}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-500"
+                            title="Ver tareas"
+                          >
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              width="16"
+                              height="16"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              className="lucide lucide-list-checks"
+                            >
+                              <path d="m3 7 3 3 3-3" />
+                              <path d="M6 10V5" />
+                              <line x1="13" x2="21" y1="7" y2="7" />
+                              <path d="m3 17 3 3 3-3" />
+                              <path d="M6 20v-5" />
+                              <line x1="13" x2="21" y1="17" y2="17" />
+                            </svg>
+                          </Link>
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
               {projects.length > 5 && (

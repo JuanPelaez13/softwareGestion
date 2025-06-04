@@ -6,10 +6,14 @@ export default async function ProjectsPage() {
   const projectsResult = await getUserProjects()
   const projects = projectsResult.success ? projectsResult.projects : []
 
+  // Añadir logging para depuración
+  console.log("Resultado de getUserProjects:", projectsResult)
+
   return (
     <div>
       <div className="mb-8 flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-800">Proyectos</h1>
+        {/* Botón "Nuevo Proyecto" en la página de proyectos */}
         <Link
           href="/dashboard/projects/new"
           className="flex items-center rounded-md bg-green-600 px-4 py-2 text-white hover:bg-green-700"
@@ -28,7 +32,7 @@ export default async function ProjectsPage() {
         />
       </div>
 
-      {projects.length > 0 ? (
+      {projects && projects.length > 0 ? (
         <div className="overflow-hidden rounded-lg border bg-white shadow">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
@@ -68,6 +72,12 @@ export default async function ProjectsPage() {
                   className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
                 >
                   Creado
+                </th>
+                <th
+                  scope="col"
+                  className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
+                >
+                  Propietario
                 </th>
                 <th
                   scope="col"
@@ -140,6 +150,10 @@ export default async function ProjectsPage() {
                     {new Date(project.created_at).toLocaleDateString()}
                   </td>
                   <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+                    {project.owner_name || (project.is_owner ? "Tú" : "Desconocido")}
+                    {!project.is_owner && <span className="ml-2 text-xs text-blue-600">(Colaborador)</span>}
+                  </td>
+                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
                     <Link
                       href={`/dashboard/projects/${project.id}/edit`}
                       className="flex h-8 w-8 items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-500"
@@ -171,6 +185,7 @@ export default async function ProjectsPage() {
         <div className="rounded-lg border bg-white p-8 text-center shadow-sm">
           <h3 className="mb-2 text-lg font-medium">No tienes proyectos aún</h3>
           <p className="mb-4 text-gray-500">Comienza creando tu primer proyecto</p>
+          {/* Botón "Nuevo Proyecto" cuando no hay proyectos */}
           <Link
             href="/dashboard/projects/new"
             className="inline-flex items-center rounded-md bg-green-600 px-4 py-2 text-white hover:bg-green-700"

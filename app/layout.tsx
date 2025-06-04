@@ -21,6 +21,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es">
+      <head>
+        {/* Asegurarnos de que las imágenes se carguen correctamente */}
+        <link rel="preload" href="/edusqa-logo.png" as="image" />
+      </head>
       <body className={inter.className}>{children}</body>
     </html>
   )

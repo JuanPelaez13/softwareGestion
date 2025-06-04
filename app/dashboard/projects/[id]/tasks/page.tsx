@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import React, { use, useState, useEffect } from "react"
+
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { getProjectById } from "@/lib/projects"
@@ -12,6 +13,7 @@ import {
   updateTask,
   getAllUsers,
   createSubtask,
+  getProjectCollaborators,
 } from "@/lib/tasks"
 import type { TaskStatus, Task } from "@/lib/tasks"
 import { ArrowLeft, Plus, Calendar, X, AlertTriangle, Users, ChevronUp, ChevronDown, Eye, EyeOff } from "lucide-react"
@@ -57,10 +59,11 @@ const groupColors: Record<string, string> = {
 }
 
 export default function ProjectTasksPage({
-  params,
+  params: paramsPromise,
 }: {
-  params: { id: string }
+  params: Promise<{ id: string }>
 }) {
+  const params = use(paramsPromise)
   const router = useRouter()
   const [projectId, setProjectId] = useState<number | null>(null)
 
@@ -100,6 +103,7 @@ export default function ProjectTasksPage({
   const [fixingDatabase, setFixingDatabase] = useState(false)
   const [needsRecreate, setNeedsRecreate] = useState(false)
   const [users, setUsers] = useState<any[]>([])
+  const [projectCollaborators, setProjectCollaborators] = useState<any[]>([])
   const [showSubtaskForm, setShowSubtaskForm] = useState<number | null>(null)
   const [newSubtaskData, setNewSubtaskData] = useState({
     title: "",
@@ -113,7 +117,7 @@ export default function ProjectTasksPage({
 
   // Extraer el ID del proyecto de manera segura
   useEffect(() => {
-    if (params && params.id) {
+    if (params.id) {
       const id = Number.parseInt(params.id, 10)
       if (!isNaN(id)) {
         setProjectId(id)
@@ -121,15 +125,24 @@ export default function ProjectTasksPage({
         router.push("/dashboard/projects")
       }
     }
-  }, [params, router])
+  }, [params.id, router])
 
-  // Cargar usuarios
+  // Cargar usuarios y colaboradores del proyecto
   useEffect(() => {
     async function loadUsers() {
       try {
+        // Cargar todos los usuarios para mantener compatibilidad con funciones existentes
         const result = await getAllUsers()
         if (result.success) {
           setUsers(result.users)
+        }
+
+        // Cargar colaboradores del proyecto si tenemos un ID de proyecto
+        if (projectId) {
+          const collaboratorsResult = await getProjectCollaborators(projectId)
+          if (collaboratorsResult.success) {
+            setProjectCollaborators(collaboratorsResult.users)
+          }
         }
       } catch (error) {
         console.error("Error loading users:", error)
@@ -137,7 +150,7 @@ export default function ProjectTasksPage({
     }
 
     loadUsers()
-  }, [])
+  }, [projectId])
 
   // Función para corregir la base de datos
   const fixDatabase = async (recreate = false) => {
@@ -203,44 +216,32 @@ export default function ProjectTasksPage({
             },
           }
 
-          // Aplanar todas las tareas de todos los grupos
-          const allTasks: Task[] = []
-          groupsResult.groups.forEach((group) => {
-            if (group.tasks) {
-              group.tasks.forEach((task) => {
-                // Añadir el nombre del grupo a la tarea
-                const taskWithGroup = {
-                  ...task,
-                  groupName: group.name,
-                  groupColor: group.color,
-                  hasSubtasks: task.subtasks && task.subtasks.length > 0,
-                }
-                allTasks.push(taskWithGroup)
-
-                // También añadir subtareas si existen
-                if (task.subtasks) {
-                  task.subtasks.forEach((subtask) => {
-                    const subtaskWithGroup = {
-                      ...subtask,
-                      groupName: group.name,
-                      groupColor: group.color,
-                      isSubtask: true,
-                      parentTitle: task.title,
-                      parentId: task.id,
+          // Procesar todas las tareas de todos los grupos
+          // CAMBIO: Solo incluir tareas principales (sin parent_id) en las columnas
+          if (groupsResult.groups && Array.isArray(groupsResult.groups)) {
+            groupsResult.groups.forEach((group) => {
+              if (group && group.tasks && Array.isArray(group.tasks)) {
+                group.tasks.forEach((task) => {
+                  // Solo procesar tareas principales (sin parent_id)
+                  if (!task.parent_id) {
+                    // Añadir el nombre del grupo a la tarea
+                    const taskWithGroup = {
+                      ...task,
+                      groupName: group.name || "Sin grupo",
+                      groupColor: group.color || "blue",
+                      hasSubtasks: task.subtasks && task.subtasks.length > 0,
+                      subtasks: task.subtasks || [],
                     }
-                    allTasks.push(subtaskWithGroup)
-                  })
-                }
-              })
-            }
-          })
 
-          // Distribuir tareas en columnas según su estado
-          allTasks.forEach((task) => {
-            if (newColumns[task.status]) {
-              newColumns[task.status].tasks.push(task)
-            }
-          })
+                    // Añadir la tarea principal a la columna correspondiente
+                    if (newColumns[task.status]) {
+                      newColumns[task.status].tasks.push(taskWithGroup)
+                    }
+                  }
+                })
+              }
+            })
+          }
 
           setColumns(newColumns)
         } else {
@@ -351,42 +352,29 @@ export default function ProjectTasksPage({
               completed: { ...columns.completed, tasks: [] },
             }
 
-            // Aplanar todas las tareas de todos los grupos
-            const allTasks: Task[] = []
-            groupsResult.groups.forEach((group) => {
-              if (group.tasks) {
-                group.tasks.forEach((task) => {
-                  const taskWithGroup = {
-                    ...task,
-                    groupName: group.name,
-                    groupColor: group.color,
-                    hasSubtasks: task.subtasks && task.subtasks.length > 0,
-                  }
-                  allTasks.push(taskWithGroup)
-
-                  if (task.subtasks) {
-                    task.subtasks.forEach((subtask) => {
-                      const subtaskWithGroup = {
-                        ...subtask,
-                        groupName: group.name,
-                        groupColor: group.color,
-                        isSubtask: true,
-                        parentTitle: task.title,
-                        parentId: task.id,
+            // CAMBIO: Solo incluir tareas principales en las columnas
+            if (groupsResult.groups && Array.isArray(groupsResult.groups)) {
+              groupsResult.groups.forEach((group) => {
+                if (group && group.tasks && Array.isArray(group.tasks)) {
+                  group.tasks.forEach((task) => {
+                    if (!task.parent_id) {
+                      const taskWithGroup = {
+                        ...task,
+                        groupName: group.name || "Sin grupo",
+                        groupColor: group.color || "blue",
+                        hasSubtasks: task.subtasks && task.subtasks.length > 0,
+                        subtasks: task.subtasks || [],
                       }
-                      allTasks.push(subtaskWithGroup)
-                    })
-                  }
-                })
-              }
-            })
 
-            // Distribuir tareas en columnas según su estado
-            allTasks.forEach((task) => {
-              if (newColumns[task.status]) {
-                newColumns[task.status].tasks.push(task)
-              }
-            })
+                      // Añadir la tarea principal a la columna correspondiente
+                      if (newColumns[task.status]) {
+                        newColumns[task.status].tasks.push(taskWithGroup)
+                      }
+                    }
+                  })
+                }
+              })
+            }
 
             setColumns(newColumns)
           }
@@ -447,42 +435,29 @@ export default function ProjectTasksPage({
               completed: { ...columns.completed, tasks: [] },
             }
 
-            // Aplanar todas las tareas de todos los grupos
-            const allTasks: Task[] = []
-            groupsResult.groups.forEach((group) => {
-              if (group.tasks) {
-                group.tasks.forEach((task) => {
-                  const taskWithGroup = {
-                    ...task,
-                    groupName: group.name,
-                    groupColor: group.color,
-                    hasSubtasks: task.subtasks && task.subtasks.length > 0,
-                  }
-                  allTasks.push(taskWithGroup)
-
-                  if (task.subtasks) {
-                    task.subtasks.forEach((subtask) => {
-                      const subtaskWithGroup = {
-                        ...subtask,
-                        groupName: group.name,
-                        groupColor: group.color,
-                        isSubtask: true,
-                        parentTitle: task.title,
-                        parentId: task.id,
+            // CAMBIO: Solo incluir tareas principales en las columnas
+            if (groupsResult.groups && Array.isArray(groupsResult.groups)) {
+              groupsResult.groups.forEach((group) => {
+                if (group && group.tasks && Array.isArray(group.tasks)) {
+                  group.tasks.forEach((task) => {
+                    if (!task.parent_id) {
+                      const taskWithGroup = {
+                        ...task,
+                        groupName: group.name || "Sin grupo",
+                        groupColor: group.color || "blue",
+                        hasSubtasks: task.subtasks && task.subtasks.length > 0,
+                        subtasks: task.subtasks || [],
                       }
-                      allTasks.push(subtaskWithGroup)
-                    })
-                  }
-                })
-              }
-            })
 
-            // Distribuir tareas en columnas según su estado
-            allTasks.forEach((task) => {
-              if (newColumns[task.status]) {
-                newColumns[task.status].tasks.push(task)
-              }
-            })
+                      // Añadir la tarea principal a la columna correspondiente
+                      if (newColumns[task.status]) {
+                        newColumns[task.status].tasks.push(taskWithGroup)
+                      }
+                    }
+                  })
+                }
+              })
+            }
 
             setColumns(newColumns)
           }
@@ -498,6 +473,12 @@ export default function ProjectTasksPage({
         })
         setShowSubtaskForm(null)
         setError("")
+
+        // Expandir automáticamente la tarea padre para mostrar la nueva subtarea
+        setExpandedTasks((prev) => ({
+          ...prev,
+          [parentTaskId]: true,
+        }))
       } else {
         setError(result.error || "Error al crear la subtarea")
       }
@@ -507,7 +488,7 @@ export default function ProjectTasksPage({
     }
   }
 
-  const handleDeleteTask = async (taskId: number) => {
+  const handleDeleteTask = async (taskId: number, isSubtask = false, parentId?: number) => {
     if (!confirm("¿Estás seguro de que deseas eliminar esta tarea? Esta acción no se puede deshacer.")) {
       return
     }
@@ -517,14 +498,36 @@ export default function ProjectTasksPage({
 
       if (result.success) {
         // Actualizar el estado local
-        const newColumns = { ...columns }
+        if (isSubtask && parentId) {
+          // Si es una subtarea, actualizar la tarea padre
+          const newColumns = { ...columns }
 
-        // Buscar y eliminar la tarea de la columna correspondiente
-        Object.keys(newColumns).forEach((columnId) => {
-          newColumns[columnId].tasks = newColumns[columnId].tasks.filter((task: Task) => task.id !== taskId)
-        })
+          Object.keys(newColumns).forEach((columnId) => {
+            newColumns[columnId].tasks = newColumns[columnId].tasks.map((task: any) => {
+              if (task.id === parentId) {
+                // Filtrar la subtarea eliminada
+                const updatedSubtasks = task.subtasks
+                  ? task.subtasks.filter((subtask: any) => subtask.id !== taskId)
+                  : []
+                return {
+                  ...task,
+                  subtasks: updatedSubtasks,
+                  hasSubtasks: updatedSubtasks.length > 0,
+                }
+              }
+              return task
+            })
+          })
 
-        setColumns(newColumns)
+          setColumns(newColumns)
+        } else {
+          // Si es una tarea principal, eliminarla de la columna
+          const newColumns = { ...columns }
+          Object.keys(newColumns).forEach((columnId) => {
+            newColumns[columnId].tasks = newColumns[columnId].tasks.filter((task: Task) => task.id !== taskId)
+          })
+          setColumns(newColumns)
+        }
       } else {
         setError(result.error || "Error al eliminar la tarea")
       }
@@ -604,24 +607,9 @@ export default function ProjectTasksPage({
     })
   }
 
-  // Filtrar tareas para mostrar u ocultar subtareas
-  const getFilteredTasks = (tasks: any[]) => {
-    if (!showSubtasks) {
-      return tasks.filter((task) => !task.isSubtask)
-    } else {
-      return tasks.filter((task) => {
-        // Si no es subtarea, siempre mostrarla
-        if (!task.isSubtask) return true
-
-        // Si es subtarea, mostrarla solo si su tarea padre está expandida
-        return expandedTasks[task.parentId] === true
-      })
-    }
-  }
-
   // Contar tareas principales (sin contar subtareas)
   const countMainTasks = (columnId: string) => {
-    return columns[columnId].tasks.filter((task: any) => !task.isSubtask).length
+    return columns[columnId]?.tasks?.length || 0
   }
 
   // Asegurarse de que cuando se carga la página, todas las tareas estén colapsadas
@@ -629,16 +617,152 @@ export default function ProjectTasksPage({
     if (projectId) {
       // Inicializar todas las tareas como colapsadas
       const initialExpandedState: Record<number, boolean> = {}
-      Object.values(columns).forEach((column) => {
-        column.tasks.forEach((task: any) => {
-          if (!task.isSubtask && task.hasSubtasks) {
-            initialExpandedState[task.id] = false
+
+      // Verificar que columns y sus propiedades existan antes de iterar
+      if (columns) {
+        Object.values(columns).forEach((column: any) => {
+          if (column && column.tasks && Array.isArray(column.tasks)) {
+            column.tasks.forEach((task: any) => {
+              if (task && task.hasSubtasks) {
+                initialExpandedState[task.id] = false
+              }
+            })
           }
         })
-      })
+      }
+
       setExpandedTasks(initialExpandedState)
     }
   }, [columns, projectId])
+
+  // Renderizar subtareas para una tarea específica
+  const renderSubtasks = (task: any) => {
+    if (
+      !task ||
+      !task.subtasks ||
+      !Array.isArray(task.subtasks) ||
+      task.subtasks.length === 0 ||
+      !expandedTasks[task.id]
+    ) {
+      return null
+    }
+
+    return (
+      <div className="mt-2 space-y-2 pl-4 border-l-2 border-gray-200">
+        {task.subtasks.map((subtask: any, subtaskIndex: number) => (
+          <div
+            key={`subtask-${task.id}-${subtask.id}-${subtaskIndex}`}
+            className="rounded-md border border-dashed bg-white p-3 shadow-sm"
+          >
+            <div className="mb-2 flex items-center justify-between">
+              <div
+                className={`h-2 w-16 rounded-full ${priorityColors[subtask.priority] || priorityColors.medium}`}
+              ></div>
+              <div className="flex items-center space-x-1">
+                <select
+                  value={subtask.priority || "medium"}
+                  onChange={(e) => handleUpdateTaskPriority(subtask.id, e.target.value)}
+                  className="text-xs border-none bg-transparent"
+                >
+                  <option value="low">Baja</option>
+                  <option value="medium">Media</option>
+                  <option value="high">Alta</option>
+                  <option value="urgent">Urgente</option>
+                </select>
+                <button
+                  onClick={() => handleDeleteTask(subtask.id, true, task.id)}
+                  className="text-gray-400 hover:text-red-500"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M3 6h18"></path>
+                    <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+                    <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <h3 className="font-medium text-gray-800">{subtask.title}</h3>
+            {subtask.description && <p className="mt-1 text-sm text-gray-600 line-clamp-2">{subtask.description}</p>}
+
+            <div className="mt-3 flex items-center justify-between text-xs text-gray-500">
+              <div className="flex items-center">
+                <span
+                  className={`mr-2 inline-block h-2 w-2 rounded-full ${
+                    task.groupColor === "blue"
+                      ? "bg-blue-500"
+                      : task.groupColor === "green"
+                        ? "bg-green-500"
+                        : task.groupColor === "yellow"
+                          ? "bg-yellow-500"
+                          : task.groupColor === "red"
+                            ? "bg-red-500"
+                            : task.groupColor === "purple"
+                              ? "bg-purple-500"
+                              : "bg-gray-500"
+                  }`}
+                ></span>
+                {task.groupName} (Subtarea)
+              </div>
+              {subtask.due_date && (
+                <div className="flex items-center">
+                  <Calendar className="mr-1 h-3 w-3" />
+                  {new Date(subtask.due_date).toLocaleDateString()}
+                </div>
+              )}
+            </div>
+
+            <div className="mt-2 flex items-center">
+              <Users className="mr-1 h-3 w-3 text-gray-400" />
+              <select
+                value={subtask.assigned_to || ""}
+                onChange={(e) => handleUpdateTaskAssignee(subtask.id, e.target.value)}
+                className="text-xs border-none bg-transparent text-gray-600"
+              >
+                <option value="">Sin asignar</option>
+                {projectCollaborators.map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.name} {user.role === "owner" ? "(Propietario)" : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="mt-2">
+              <span
+                className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                  subtask.status === "to_do"
+                    ? "bg-gray-100 text-gray-800"
+                    : subtask.status === "in_progress"
+                      ? "bg-blue-100 text-blue-800"
+                      : subtask.status === "review"
+                        ? "bg-yellow-100 text-yellow-800"
+                        : "bg-green-100 text-green-800"
+                }`}
+              >
+                {subtask.status === "to_do"
+                  ? "Por hacer"
+                  : subtask.status === "in_progress"
+                    ? "En progreso"
+                    : subtask.status === "review"
+                      ? "En revisión"
+                      : "Completado"}
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
+    )
+  }
 
   if (isLoading) {
     return (
@@ -785,9 +909,10 @@ export default function ProjectTasksPage({
                   className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-green-500 focus:outline-none focus:ring-green-500"
                 >
                   <option value="">Sin asignar</option>
-                  {users.map((user) => (
+                  {/* Mostrar solo los colaboradores del proyecto */}
+                  {projectCollaborators.map((user) => (
                     <option key={user.id} value={user.id}>
-                      {user.name}
+                      {user.name} {user.role === "owner" ? "(Propietario)" : ""}
                     </option>
                   ))}
                 </select>
@@ -854,200 +979,206 @@ export default function ProjectTasksPage({
                       {...provided.droppableProps}
                       className="min-h-[200px] rounded-md bg-gray-50 p-2"
                     >
-                      {getFilteredTasks(column.tasks).map((task: any, index: number) => (
-                        <Draggable key={`task-${task.id}`} draggableId={`task-${task.id}`} index={index}>
-                          {(provided) => (
-                            <div
-                              ref={provided.innerRef}
-                              {...provided.draggableProps}
-                              {...provided.dragHandleProps}
-                              className={`mb-2 rounded-md border ${
-                                task.isSubtask ? "ml-4 border-dashed" : ""
-                              } bg-white p-3 shadow-sm`}
-                            >
-                              <div className="mb-2 flex items-center justify-between">
-                                <div className={`h-2 w-16 rounded-full ${priorityColors[task.priority]}`}></div>
-                                <div className="flex items-center space-x-1">
-                                  <select
-                                    value={task.priority}
-                                    onChange={(e) => handleUpdateTaskPriority(task.id, e.target.value)}
-                                    className="text-xs border-none bg-transparent"
-                                  >
-                                    <option value="low">Baja</option>
-                                    <option value="medium">Media</option>
-                                    <option value="high">Alta</option>
-                                    <option value="urgent">Urgente</option>
-                                  </select>
-                                  <button
-                                    onClick={() => handleDeleteTask(task.id)}
-                                    className="text-gray-400 hover:text-red-500"
-                                  >
-                                    <svg
-                                      xmlns="http://www.w3.org/2000/svg"
-                                      width="16"
-                                      height="16"
-                                      viewBox="0 0 24 24"
-                                      fill="none"
-                                      stroke="currentColor"
-                                      strokeWidth="2"
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                    >
-                                      <path d="M3 6h18"></path>
-                                      <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
-                                      <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
-                                    </svg>
-                                  </button>
-                                </div>
-                              </div>
-                              <h3 className="font-medium text-gray-800">{task.title}</h3>
-                              {task.description && (
-                                <p className="mt-1 text-sm text-gray-600 line-clamp-2">{task.description}</p>
-                              )}
-
-                              <div className="mt-3 flex items-center justify-between text-xs text-gray-500">
-                                <div className="flex items-center">
-                                  <span
-                                    className={`mr-2 inline-block h-2 w-2 rounded-full ${
-                                      task.groupColor === "blue"
-                                        ? "bg-blue-500"
-                                        : task.groupColor === "green"
-                                          ? "bg-green-500"
-                                          : task.groupColor === "yellow"
-                                            ? "bg-yellow-500"
-                                            : task.groupColor === "red"
-                                              ? "bg-red-500"
-                                              : task.groupColor === "purple"
-                                                ? "bg-purple-500"
-                                                : "bg-gray-500"
-                                    }`}
-                                  ></span>
-                                  {task.groupName}
-                                </div>
-                                {task.due_date && (
-                                  <div className="flex items-center">
-                                    <Calendar className="mr-1 h-3 w-3" />
-                                    {new Date(task.due_date).toLocaleDateString()}
-                                  </div>
-                                )}
-                              </div>
-
-                              <div className="mt-2 flex items-center justify-between">
-                                <div className="flex items-center">
-                                  <Users className="mr-1 h-3 w-3 text-gray-400" />
-                                  <select
-                                    value={task.assigned_to || ""}
-                                    onChange={(e) => handleUpdateTaskAssignee(task.id, e.target.value)}
-                                    className="text-xs border-none bg-transparent text-gray-600"
-                                  >
-                                    <option value="">Sin asignar</option>
-                                    {users.map((user) => (
-                                      <option key={user.id} value={user.id}>
-                                        {user.name}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </div>
-
-                                {!task.isSubtask && (
-                                  <div className="flex items-center space-x-2">
-                                    {task.hasSubtasks && (
-                                      <button
-                                        onClick={() => toggleExpandTask(task.id)}
-                                        className="flex items-center text-xs text-gray-500 hover:text-green-600"
-                                      >
-                                        {expandedTasks[task.id] ? (
-                                          <>
-                                            <ChevronUp className="mr-1 h-3 w-3" />
-                                            Ocultar
-                                          </>
-                                        ) : (
-                                          <>
-                                            <ChevronDown className="mr-1 h-3 w-3" />
-                                            Expandir
-                                          </>
-                                        )}
-                                      </button>
-                                    )}
-                                    <button
-                                      onClick={() => setShowSubtaskForm(showSubtaskForm === task.id ? null : task.id)}
-                                      className="flex items-center text-xs text-gray-500 hover:text-green-600"
-                                    >
-                                      {showSubtaskForm === task.id ? (
-                                        <>
-                                          <ChevronUp className="mr-1 h-3 w-3" />
-                                          Ocultar
-                                        </>
-                                      ) : (
-                                        <>
-                                          <Plus className="mr-1 h-3 w-3" />
-                                          Subtarea
-                                        </>
-                                      )}
-                                    </button>
-                                  </div>
-                                )}
-                              </div>
-
-                              {showSubtaskForm === task.id && (
-                                <div className="mt-3 border-t pt-3">
-                                  <div className="space-y-3">
-                                    <div>
-                                      <input
-                                        type="text"
-                                        value={newSubtaskData.title}
-                                        onChange={(e) =>
-                                          setNewSubtaskData({ ...newSubtaskData, title: e.target.value })
-                                        }
-                                        className="block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm shadow-sm focus:border-green-500 focus:outline-none focus:ring-green-500"
-                                        placeholder="Título de la subtarea"
-                                      />
-                                    </div>
-                                    <div className="flex space-x-2">
+                      {column.tasks &&
+                        column.tasks.map((task: any, index: number) => (
+                          <React.Fragment key={`task-fragment-${task.id}-${index}`}>
+                            <Draggable key={`task-${task.id}-${index}`} draggableId={`task-${task.id}`} index={index}>
+                              {(provided) => (
+                                <div
+                                  ref={provided.innerRef}
+                                  {...provided.draggableProps}
+                                  {...provided.dragHandleProps}
+                                  className="mb-2 rounded-md border bg-white p-3 shadow-sm"
+                                >
+                                  <div className="mb-2 flex items-center justify-between">
+                                    <div
+                                      className={`h-2 w-16 rounded-full ${priorityColors[task.priority] || priorityColors.medium}`}
+                                    ></div>
+                                    <div className="flex items-center space-x-1">
                                       <select
-                                        value={newSubtaskData.priority}
-                                        onChange={(e) =>
-                                          setNewSubtaskData({ ...newSubtaskData, priority: e.target.value })
-                                        }
-                                        className="block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm shadow-sm focus:border-green-500 focus:outline-none focus:ring-green-500"
+                                        value={task.priority || "medium"}
+                                        onChange={(e) => handleUpdateTaskPriority(task.id, e.target.value)}
+                                        className="text-xs border-none bg-transparent"
                                       >
                                         <option value="low">Baja</option>
                                         <option value="medium">Media</option>
                                         <option value="high">Alta</option>
                                         <option value="urgent">Urgente</option>
                                       </select>
+                                      <button
+                                        onClick={() => handleDeleteTask(task.id)}
+                                        className="text-gray-400 hover:text-red-500"
+                                      >
+                                        <svg
+                                          xmlns="http://www.w3.org/2000/svg"
+                                          width="16"
+                                          height="16"
+                                          viewBox="0 0 24 24"
+                                          fill="none"
+                                          stroke="currentColor"
+                                          strokeWidth="2"
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                        >
+                                          <path d="M3 6h18"></path>
+                                          <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+                                          <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+                                        </svg>
+                                      </button>
+                                    </div>
+                                  </div>
+                                  <h3 className="font-medium text-gray-800">{task.title}</h3>
+                                  {task.description && (
+                                    <p className="mt-1 text-sm text-gray-600 line-clamp-2">{task.description}</p>
+                                  )}
+
+                                  <div className="mt-3 flex items-center justify-between text-xs text-gray-500">
+                                    <div className="flex items-center">
+                                      <span
+                                        className={`mr-2 inline-block h-2 w-2 rounded-full ${
+                                          task.groupColor === "blue"
+                                            ? "bg-blue-500"
+                                            : task.groupColor === "green"
+                                              ? "bg-green-500"
+                                              : task.groupColor === "yellow"
+                                                ? "bg-yellow-500"
+                                                : task.groupColor === "red"
+                                                  ? "bg-red-500"
+                                                  : task.groupColor === "purple"
+                                                    ? "bg-purple-500"
+                                                    : "bg-gray-500"
+                                        }`}
+                                      ></span>
+                                      {task.groupName}
+                                    </div>
+                                    {task.due_date && (
+                                      <div className="flex items-center">
+                                        <Calendar className="mr-1 h-3 w-3" />
+                                        {new Date(task.due_date).toLocaleDateString()}
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  <div className="mt-2 flex items-center justify-between">
+                                    <div className="flex items-center">
+                                      <Users className="mr-1 h-3 w-3 text-gray-400" />
                                       <select
-                                        value={newSubtaskData.assigned_to}
-                                        onChange={(e) =>
-                                          setNewSubtaskData({ ...newSubtaskData, assigned_to: e.target.value })
-                                        }
-                                        className="block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm shadow-sm focus:border-green-500 focus:outline-none focus:ring-green-500"
+                                        value={task.assigned_to || ""}
+                                        onChange={(e) => handleUpdateTaskAssignee(task.id, e.target.value)}
+                                        className="text-xs border-none bg-transparent text-gray-600"
                                       >
                                         <option value="">Sin asignar</option>
-                                        {users.map((user) => (
+                                        {/* Mostrar solo los colaboradores del proyecto */}
+                                        {projectCollaborators.map((user) => (
                                           <option key={user.id} value={user.id}>
-                                            {user.name}
+                                            {user.name} {user.role === "owner" ? "(Propietario)" : ""}
                                           </option>
                                         ))}
                                       </select>
                                     </div>
-                                    <div className="flex justify-end">
+
+                                    <div className="flex items-center space-x-4">
+                                      {task.hasSubtasks && (
+                                        <button
+                                          onClick={() => toggleExpandTask(task.id)}
+                                          className="flex items-center text-xs text-gray-500 hover:text-green-600 min-w-[80px]"
+                                        >
+                                          {expandedTasks[task.id] ? (
+                                            <>
+                                              <ChevronUp className="mr-1 h-3 w-3" />
+                                              <span>Ocultar</span>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <ChevronDown className="mr-1 h-3 w-3" />
+                                              <span>Expandir</span>
+                                            </>
+                                          )}
+                                        </button>
+                                      )}
                                       <button
-                                        onClick={() => handleCreateSubtask(task.id)}
-                                        className="rounded-md bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700"
+                                        onClick={() => setShowSubtaskForm(showSubtaskForm === task.id ? null : task.id)}
+                                        className="flex items-center text-xs text-gray-500 hover:text-green-600 min-w-[80px]"
                                       >
-                                        Añadir
+                                        {showSubtaskForm === task.id ? (
+                                          <>
+                                            <ChevronUp className="mr-1 h-3 w-3" />
+                                            <span>Ocultar</span>
+                                          </>
+                                        ) : (
+                                          <>
+                                            <Plus className="mr-1 h-3 w-3" />
+                                            <span>Subtarea</span>
+                                          </>
+                                        )}
                                       </button>
                                     </div>
                                   </div>
+
+                                  {showSubtaskForm === task.id && (
+                                    <div className="mt-3 border-t pt-3">
+                                      <div className="space-y-3">
+                                        <div>
+                                          <input
+                                            type="text"
+                                            value={newSubtaskData.title}
+                                            onChange={(e) =>
+                                              setNewSubtaskData({ ...newSubtaskData, title: e.target.value })
+                                            }
+                                            className="block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm shadow-sm focus:border-green-500 focus:outline-none focus:ring-green-500"
+                                            placeholder="Título de la subtarea"
+                                          />
+                                        </div>
+                                        <div className="flex space-x-2">
+                                          <select
+                                            value={newSubtaskData.priority}
+                                            onChange={(e) =>
+                                              setNewSubtaskData({ ...newSubtaskData, priority: e.target.value })
+                                            }
+                                            className="block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm shadow-sm focus:border-green-500 focus:outline-none focus:ring-green-500"
+                                          >
+                                            <option value="low">Baja</option>
+                                            <option value="medium">Media</option>
+                                            <option value="high">Alta</option>
+                                            <option value="urgent">Urgente</option>
+                                          </select>
+                                          <select
+                                            value={newSubtaskData.assigned_to}
+                                            onChange={(e) =>
+                                              setNewSubtaskData({ ...newSubtaskData, assigned_to: e.target.value })
+                                            }
+                                            className="block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm shadow-sm focus:border-green-500 focus:outline-none focus:ring-green-500"
+                                          >
+                                            <option value="">Sin asignar</option>
+                                            {/* Mostrar solo los colaboradores del proyecto */}
+                                            {projectCollaborators.map((user) => (
+                                              <option key={user.id} value={user.id}>
+                                                {user.name} {user.role === "owner" ? "(Propietario)" : ""}
+                                              </option>
+                                            ))}
+                                          </select>
+                                        </div>
+                                        <div className="flex justify-end">
+                                          <button
+                                            onClick={() => handleCreateSubtask(task.id)}
+                                            className="rounded-md bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700"
+                                          >
+                                            Añadir
+                                          </button>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
                               )}
-                            </div>
-                          )}
-                        </Draggable>
-                      ))}
+                            </Draggable>
+
+                            {/* Renderizar subtareas debajo de la tarea padre */}
+                            {showSubtasks && renderSubtasks(task)}
+                          </React.Fragment>
+                        ))}
                       {provided.placeholder}
-                      {getFilteredTasks(column.tasks).length === 0 && (
+                      {(!column.tasks || column.tasks.length === 0) && (
                         <div className="flex h-20 items-center justify-center rounded-md border border-dashed border-gray-300 bg-white p-4">
                           <p className="text-center text-sm text-gray-500">
                             {column.id === "to_do" ? (

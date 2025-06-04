@@ -194,7 +194,61 @@ export async function getTaskGroupsByProject(projectId: number) {
   }
 }
 
-// Función para obtener todos los usuarios
+// Nueva función para obtener los colaboradores de un proyecto específico
+export async function getProjectCollaborators(projectId: number) {
+  try {
+    const user = await getCurrentUser()
+
+    if (!user) {
+      return {
+        success: false,
+        error: "Debes iniciar sesión para ver los colaboradores",
+      }
+    }
+
+    console.log(`Obteniendo colaboradores para el proyecto ${projectId}`)
+
+    // Obtener el propietario del proyecto
+    const owners = (await query(
+      `SELECT u.id, u.name, u.email, 'owner' as role
+       FROM projects p
+       JOIN users u ON p.owner_id = u.id
+       WHERE p.id = ?`,
+      [projectId],
+    )) as any[]
+
+    console.log(`Propietario del proyecto:`, owners)
+
+    // Obtener los colaboradores del proyecto
+    const collaborators = (await query(
+      `SELECT u.id, u.name, u.email, 'collaborator' as role
+       FROM project_collaborators pc
+       JOIN users u ON pc.user_id = u.id
+       WHERE pc.project_id = ?`,
+      [projectId],
+    )) as any[]
+
+    console.log(`Colaboradores del proyecto:`, collaborators)
+
+    // Combinar propietario y colaboradores
+    const allUsers = [...owners, ...collaborators]
+
+    console.log(`Total de usuarios con acceso al proyecto:`, allUsers.length)
+
+    return {
+      success: true,
+      users: allUsers,
+    }
+  } catch (error) {
+    console.error("Error al obtener colaboradores del proyecto:", error)
+    return {
+      success: false,
+      error: "Error al obtener los colaboradores del proyecto",
+    }
+  }
+}
+
+// Función para obtener todos los usuarios (mantener por compatibilidad)
 export async function getAllUsers() {
   try {
     const currentUser = await getCurrentUser()

@@ -1,348 +1,393 @@
-import { notFound } from "next/navigation"
+import { redirect } from "next/navigation"
 import Link from "next/link"
-import { getProjectById } from "@/lib/projects"
-import { getTaskGroupsByProject } from "@/lib/tasks"
-import { ArrowLeft, Calendar, Clock, Edit, Flag, PlusCircle, CheckSquare, List } from "lucide-react"
-import { use } from "react"
+import { getSession } from "@/lib/auth"
+import { getUserProjects } from "@/lib/projects"
+import { BarChart3, CheckSquare, Clock, FolderKanban, PlusCircle, Calendar, Bell, Users, Zap } from "lucide-react"
 
-export default function ProjectDetailPage({
-  params,
-}: {
-  params: { id: string }
-}) {
-  // Usar React.use para desenvolver params de manera segura
-  const unwrappedParams = use(params)
-  const projectId = Number.parseInt(unwrappedParams.id)
+export default async function DashboardPage() {
+  const session = await getSession()
 
-  if (isNaN(projectId)) {
-    notFound()
+  if (!session) {
+    redirect("/login")
   }
 
-  const projectResult = getProjectById(projectId)
-  const resolvedProjectResult = use(projectResult)
+  const projectsResult = await getUserProjects()
+  const projects = projectsResult.success ? projectsResult.projects : []
 
-  if (!resolvedProjectResult.success) {
-    notFound()
-  }
+  // Contar proyectos por estado
+  const activeProjects = projects.filter((p) => p.status === "active").length
+  const completedProjects = projects.filter((p) => p.status === "completed").length
+  const onHoldProjects = projects.filter((p) => p.status === "on_hold").length
 
-  const project = resolvedProjectResult.project
-
-  // Obtener los grupos de tareas y tareas
-  const taskGroupsResult = getTaskGroupsByProject(projectId)
-  const resolvedTaskGroupsResult = use(taskGroupsResult)
-  const taskGroups = resolvedTaskGroupsResult.success ? resolvedTaskGroupsResult.groups : []
-
-  // Calcular estadísticas de tareas
-  let totalTasks = 0
-  let completedTasks = 0
-  const tasksByStatus = {
-    to_do: 0,
-    in_progress: 0,
-    review: 0,
-    completed: 0,
-  }
-
-  // Contar solo tareas principales (no subtareas)
-  taskGroups.forEach((group) => {
-    if (group.tasks) {
-      group.tasks.forEach((task) => {
-        // Solo contar tareas principales
-        if (!task.parent_id) {
-          totalTasks++
-          if (task.status === "completed") {
-            completedTasks++
-          }
-          tasksByStatus[task.status]++
-        }
-      })
-    }
-  })
-
-  const completionPercentage = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
+  // Determinar si es un usuario administrador
+  const isAdmin = session.user.email === "admin@edusqa.com"
 
   return (
     <div>
       <div className="mb-8 flex items-center justify-between">
-        <div className="flex items-center">
-          <Link href="/dashboard/projects" className="mr-4 text-gray-500 hover:text-gray-700">
-            <ArrowLeft className="h-5 w-5" />
-          </Link>
-          <h1 className="text-2xl font-bold text-gray-800">{project.name}</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-gray-800">Dashboard</h1>
+          <p className="mt-1 text-sm text-gray-500">Bienvenido a tu centro de gestión de proyectos</p>
         </div>
-        <div className="flex space-x-3">
-          <Link
-            href={`/dashboard/projects/${project.id}/edit`}
-            className="flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-          >
-            <Edit className="mr-2 h-4 w-4" />
-            Editar
-          </Link>
-          <Link
-            href={`/dashboard/projects/${project.id}/tasks`}
-            className="flex items-center rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
-          >
-            <List className="mr-2 h-4 w-4" />
-            Ver Tareas
-          </Link>
-        </div>
+        <Link
+          href="/dashboard/projects/new"
+          className="flex items-center rounded-md bg-green-600 px-4 py-2 text-white hover:bg-green-700"
+        >
+          <PlusCircle className="mr-2 h-5 w-5" />
+          Nuevo Proyecto
+        </Link>
       </div>
 
-      <div className="mb-8 grid gap-6 md:grid-cols-2">
+      {isAdmin && (
+        <div className="mb-6 rounded-md bg-blue-50 p-4 text-blue-800">
+          <div className="flex">
+            <Zap className="mr-2 h-5 w-5 flex-shrink-0" />
+            <div>
+              <h3 className="font-medium">Modo Administrador</h3>
+              <p className="mt-1 text-sm">Tienes acceso a funciones administrativas adicionales.</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="mb-8 grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         <div className="rounded-lg border bg-white p-6 shadow-sm">
-          <h2 className="mb-4 text-lg font-medium text-gray-800">Detalles del Proyecto</h2>
-
-          <div className="space-y-4">
-            <div className="flex items-start">
-              <div className="mr-2 mt-0.5 text-gray-500">
-                <Flag className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-gray-500">Estado</p>
-                <p className="mt-1">
-                  <span
-                    className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                      project.status === "active"
-                        ? "bg-green-100 text-green-800"
-                        : project.status === "completed"
-                          ? "bg-blue-100 text-blue-800"
-                          : project.status === "on_hold"
-                            ? "bg-yellow-100 text-yellow-800"
-                            : "bg-red-100 text-red-800"
-                    }`}
-                  >
-                    {project.status === "active"
-                      ? "Activo"
-                      : project.status === "completed"
-                        ? "Completado"
-                        : project.status === "on_hold"
-                          ? "En Espera"
-                          : "Cancelado"}
-                  </span>
-                </p>
-              </div>
+          <div className="flex items-center">
+            <div className="rounded-full bg-blue-100 p-3">
+              <FolderKanban className="h-6 w-6 text-blue-600" />
             </div>
-
-            <div className="flex items-start">
-              <div className="mr-2 mt-0.5 text-gray-500">
-                <Clock className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-gray-500">Prioridad</p>
-                <p className="mt-1">
-                  <span
-                    className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                      project.priority === "low"
-                        ? "bg-gray-100 text-gray-800"
-                        : project.priority === "medium"
-                          ? "bg-blue-100 text-blue-800"
-                          : project.priority === "high"
-                            ? "bg-orange-100 text-orange-800"
-                            : "bg-red-100 text-red-800"
-                    }`}
-                  >
-                    {project.priority === "low"
-                      ? "Baja"
-                      : project.priority === "medium"
-                        ? "Media"
-                        : project.priority === "high"
-                          ? "Alta"
-                          : "Urgente"}
-                  </span>
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-start">
-              <div className="mr-2 mt-0.5 text-gray-500">
-                <Calendar className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-gray-500">Fechas</p>
-                <p className="mt-1 text-sm">
-                  {project.start_date ? (
-                    <>
-                      <span className="font-medium">Inicio:</span> {new Date(project.start_date).toLocaleDateString()}
-                      {project.end_date && (
-                        <>
-                          <br />
-                          <span className="font-medium">Fin:</span> {new Date(project.end_date).toLocaleDateString()}
-                        </>
-                      )}
-                    </>
-                  ) : (
-                    "No hay fechas establecidas"
-                  )}
-                </p>
-              </div>
-            </div>
-
-            <div className="pt-2">
-              <p className="text-sm font-medium text-gray-500">Descripción</p>
-              <p className="mt-1 whitespace-pre-line text-sm text-gray-700">
-                {project.description || "Sin descripción"}
-              </p>
+            <div className="ml-4">
+              <h3 className="text-sm font-medium text-gray-500">Total Proyectos</h3>
+              <p className="text-2xl font-bold">{projects.length}</p>
             </div>
           </div>
         </div>
 
         <div className="rounded-lg border bg-white p-6 shadow-sm">
-          <h2 className="mb-4 text-lg font-medium text-gray-800">Progreso</h2>
-          <div className="mb-4">
-            <div className="mb-2 flex justify-between">
-              <span className="text-sm font-medium text-gray-500">Completado</span>
-              <span className="text-sm font-medium text-gray-700">{completionPercentage}%</span>
+          <div className="flex items-center">
+            <div className="rounded-full bg-green-100 p-3">
+              <CheckSquare className="h-6 w-6 text-green-600" />
             </div>
-            <div className="h-2 w-full rounded-full bg-gray-200">
-              <div className="h-2 rounded-full bg-green-600" style={{ width: `${completionPercentage}%` }}></div>
-            </div>
-          </div>
-
-          <div className="mb-6 grid grid-cols-2 gap-4">
-            <div className="rounded-md bg-gray-50 p-3 text-center">
-              <p className="text-sm font-medium text-gray-500">Tareas Totales</p>
-              <p className="text-2xl font-bold text-gray-800">{totalTasks}</p>
-            </div>
-            <div className="rounded-md bg-gray-50 p-3 text-center">
-              <p className="text-sm font-medium text-gray-500">Completadas</p>
-              <p className="text-2xl font-bold text-gray-800">{completedTasks}</p>
+            <div className="ml-4">
+              <h3 className="text-sm font-medium text-gray-500">Proyectos Activos</h3>
+              <p className="text-2xl font-bold">{activeProjects}</p>
             </div>
           </div>
+        </div>
 
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-gray-500">Por hacer</span>
-              <span className="text-xs font-medium text-gray-700">{tasksByStatus.to_do}</span>
+        <div className="rounded-lg border bg-white p-6 shadow-sm">
+          <div className="flex items-center">
+            <div className="rounded-full bg-purple-100 p-3">
+              <Clock className="h-6 w-6 text-purple-600" />
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-gray-500">En progreso</span>
-              <span className="text-xs font-medium text-gray-700">{tasksByStatus.in_progress}</span>
+            <div className="ml-4">
+              <h3 className="text-sm font-medium text-gray-500">En Espera</h3>
+              <p className="text-2xl font-bold">{onHoldProjects}</p>
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-gray-500">En revisión</span>
-              <span className="text-xs font-medium text-gray-700">{tasksByStatus.review}</span>
+          </div>
+        </div>
+
+        <div className="rounded-lg border bg-white p-6 shadow-sm">
+          <div className="flex items-center">
+            <div className="rounded-full bg-yellow-100 p-3">
+              <BarChart3 className="h-6 w-6 text-yellow-600" />
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-gray-500">Completadas</span>
-              <span className="text-xs font-medium text-gray-700">{tasksByStatus.completed}</span>
+            <div className="ml-4">
+              <h3 className="text-sm font-medium text-gray-500">Completados</h3>
+              <p className="text-2xl font-bold">{completedProjects}</p>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="rounded-lg border bg-white p-6 shadow-sm">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-medium text-gray-800">Tareas</h2>
-          <Link
-            href={`/dashboard/projects/${project.id}/tasks`}
-            className="flex items-center rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700"
-          >
-            <PlusCircle className="mr-1.5 h-4 w-4" />
-            Gestionar Tareas
-          </Link>
-        </div>
-
-        {taskGroups.length === 0 ? (
-          <div className="rounded-md bg-gray-50 p-8 text-center">
-            <p className="text-gray-500">No hay tareas creadas para este proyecto</p>
-            <Link
-              href={`/dashboard/projects/${project.id}/tasks`}
-              className="mt-4 inline-flex items-center text-sm font-medium text-green-600 hover:text-green-700"
-            >
-              <PlusCircle className="mr-1.5 h-4 w-4" />
-              Crear la primera tarea
+      <div className="mb-8 grid gap-6 lg:grid-cols-3">
+        <div className="lg:col-span-2">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-xl font-semibold text-gray-800">Proyectos Recientes</h2>
+            <Link href="/dashboard/projects" className="text-sm font-medium text-green-600 hover:text-green-700">
+              Ver todos
             </Link>
           </div>
-        ) : (
-          <div className="space-y-4">
-            {taskGroups.slice(0, 3).map((group) => (
-              <div
-                key={group.id}
-                className={`rounded-md border-l-4 ${
-                  group.color === "blue"
-                    ? "border-blue-500"
-                    : group.color === "green"
-                      ? "border-green-500"
-                      : group.color === "yellow"
-                        ? "border-yellow-500"
-                        : group.color === "red"
-                          ? "border-red-500"
-                          : group.color === "purple"
-                            ? "border-purple-500"
-                            : group.color === "pink"
-                              ? "border-pink-500"
-                              : group.color === "indigo"
-                                ? "border-indigo-500"
-                                : "border-teal-500"
-                } p-4`}
-              >
-                <h3 className="mb-2 font-medium text-gray-800">{group.name}</h3>
-                {group.tasks && group.tasks.length > 0 ? (
-                  <ul className="space-y-2">
-                    {group.tasks
-                      .filter((task) => !task.parent_id) // Solo mostrar tareas principales
-                      .slice(0, 3)
-                      .map((task) => (
-                        <li key={task.id} className="flex items-center justify-between rounded-md bg-gray-50 p-2">
-                          <div className="flex items-center">
-                            <CheckSquare
-                              className={`mr-2 h-4 w-4 ${
-                                task.status === "completed" ? "text-green-500" : "text-gray-400"
-                              }`}
-                            />
-                            <span
-                              className={`text-sm ${
-                                task.status === "completed" ? "line-through text-gray-500" : "text-gray-800"
-                              }`}
-                            >
-                              {task.title}
-                            </span>
-                          </div>
+
+          {projects.length > 0 ? (
+            <div className="overflow-hidden rounded-lg border bg-white shadow">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th
+                      scope="col"
+                      className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
+                    >
+                      Nombre
+                    </th>
+                    <th
+                      scope="col"
+                      className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
+                    >
+                      Estado
+                    </th>
+                    <th
+                      scope="col"
+                      className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
+                    >
+                      Prioridad
+                    </th>
+                    <th
+                      scope="col"
+                      className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
+                    >
+                      Progreso
+                    </th>
+                    <th
+                      scope="col"
+                      className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
+                    >
+                      Acciones
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 bg-white">
+                  {projects.slice(0, 5).map((project) => {
+                    // Calcular el progreso basado en tareas completadas vs. total
+                    const completedTasks = project.completed_tasks || 0
+                    const totalTasks = project.total_tasks || 0
+                    const progressPercentage = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
+
+                    // Determinar el color de la barra de progreso
+                    let progressColor = "bg-blue-500"
+                    if (progressPercentage >= 100) {
+                      progressColor = "bg-green-500"
+                    } else if (progressPercentage >= 75) {
+                      progressColor = "bg-teal-500"
+                    } else if (progressPercentage >= 50) {
+                      progressColor = "bg-yellow-500"
+                    } else if (progressPercentage >= 25) {
+                      progressColor = "bg-orange-500"
+                    } else {
+                      progressColor = "bg-red-500"
+                    }
+
+                    return (
+                      <tr key={project.id} className="hover:bg-gray-50">
+                        <td className="whitespace-nowrap px-6 py-4">
+                          <Link
+                            href={`/dashboard/projects/${project.id}`}
+                            className="font-medium text-blue-600 hover:underline"
+                          >
+                            {project.name}
+                          </Link>
+                          {!project.is_owner && (
+                            <div className="mt-1 text-xs text-gray-500">Propietario: {project.owner_name}</div>
+                          )}
+                        </td>
+                        <td className="whitespace-nowrap px-6 py-4">
                           <span
-                            className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                              task.status === "to_do"
-                                ? "bg-gray-100 text-gray-800"
-                                : task.status === "in_progress"
+                            className={`inline-flex rounded-full px-2 text-xs font-semibold leading-5 ${
+                              project.status === "active"
+                                ? "bg-green-100 text-green-800"
+                                : project.status === "completed"
                                   ? "bg-blue-100 text-blue-800"
-                                  : task.status === "review"
+                                  : project.status === "on_hold"
                                     ? "bg-yellow-100 text-yellow-800"
-                                    : "bg-green-100 text-green-800"
+                                    : "bg-red-100 text-red-800"
                             }`}
                           >
-                            {task.status === "to_do"
-                              ? "Por hacer"
-                              : task.status === "in_progress"
-                                ? "En progreso"
-                                : task.status === "review"
-                                  ? "En revisión"
-                                  : "Completado"}
+                            {project.status === "active"
+                              ? "Activo"
+                              : project.status === "completed"
+                                ? "Completado"
+                                : project.status === "on_hold"
+                                  ? "En Espera"
+                                  : "Cancelado"}
                           </span>
-                        </li>
-                      ))}
-                    {group.tasks.filter((task) => !task.parent_id).length > 3 && (
-                      <li className="text-center text-sm text-gray-500">
-                        <Link href={`/dashboard/projects/${project.id}/tasks`} className="hover:text-green-600">
-                          Ver {group.tasks.filter((task) => !task.parent_id).length - 3} tareas más...
-                        </Link>
-                      </li>
-                    )}
-                  </ul>
-                ) : (
-                  <p className="text-sm text-gray-500">No hay tareas en este grupo</p>
-                )}
+                        </td>
+                        <td className="whitespace-nowrap px-6 py-4">
+                          <span
+                            className={`inline-flex rounded-full px-2 text-xs font-semibold leading-5 ${
+                              project.priority === "low"
+                                ? "bg-gray-100 text-gray-800"
+                                : project.priority === "medium"
+                                  ? "bg-blue-100 text-blue-800"
+                                  : project.priority === "high"
+                                    ? "bg-orange-100 text-orange-800"
+                                    : "bg-red-100 text-red-800"
+                            }`}
+                          >
+                            {project.priority === "low"
+                              ? "Baja"
+                              : project.priority === "medium"
+                                ? "Media"
+                                : project.priority === "high"
+                                  ? "Alta"
+                                  : "Urgente"}
+                          </span>
+                        </td>
+                        <td className="whitespace-nowrap px-6 py-4">
+                          <div className="flex items-center">
+                            <div className="w-full max-w-[120px]">
+                              <div className="h-2 w-full rounded-full bg-gray-200">
+                                <div
+                                  className={`h-2 rounded-full ${progressColor}`}
+                                  style={{ width: `${progressPercentage}%` }}
+                                ></div>
+                              </div>
+                            </div>
+                            <span className="ml-2 text-xs font-medium text-gray-600">
+                              {progressPercentage}% ({completedTasks}/{totalTasks})
+                            </span>
+                          </div>
+                        </td>
+                        <td className="whitespace-nowrap px-6 py-4">
+                          <Link
+                            href={`/dashboard/projects/${project.id}/edit`}
+                            className="mr-2 inline-flex h-8 w-8 items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-500"
+                            title="Editar proyecto"
+                          >
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              width="16"
+                              height="16"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              className="lucide lucide-pencil"
+                            >
+                              <path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+                              <path d="m15 5 4 4" />
+                            </svg>
+                          </Link>
+                          <Link
+                            href={`/dashboard/projects/${project.id}/tasks`}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-500"
+                            title="Ver tareas"
+                          >
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              width="16"
+                              height="16"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              className="lucide lucide-list-checks"
+                            >
+                              <path d="m3 7 3 3 3-3" />
+                              <path d="M6 10V5" />
+                              <line x1="13" x2="21" y1="7" y2="7" />
+                              <path d="m3 17 3 3 3-3" />
+                              <path d="M6 20v-5" />
+                              <line x1="13" x2="21" y1="17" y2="17" />
+                            </svg>
+                          </Link>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+              {projects.length > 5 && (
+                <div className="bg-gray-50 px-6 py-3 text-right">
+                  <Link href="/dashboard/projects" className="text-sm font-medium text-blue-600 hover:text-blue-500">
+                    Ver todos los proyectos
+                  </Link>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="rounded-lg border bg-white p-8 text-center shadow-sm">
+              <h3 className="mb-2 text-lg font-medium">No tienes proyectos aún</h3>
+              <p className="mb-4 text-gray-500">Comienza creando tu primer proyecto</p>
+              <Link
+                href="/dashboard/projects/new"
+                className="inline-flex items-center rounded-md bg-green-600 px-4 py-2 text-white hover:bg-green-700"
+              >
+                <PlusCircle className="mr-2 h-5 w-5" />
+                Nuevo Proyecto
+              </Link>
+            </div>
+          )}
+        </div>
+
+        <div>
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-xl font-semibold text-gray-800">Actividad Reciente</h2>
+          </div>
+          <div className="rounded-lg border bg-white p-6 shadow-sm">
+            <div className="space-y-6">
+              <div className="flex items-start">
+                <div className="mr-4 mt-1 rounded-full bg-green-100 p-2">
+                  <FolderKanban className="h-4 w-4 text-green-600" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium">Nuevo proyecto creado</p>
+                  <p className="text-xs text-gray-500">Hace 2 días</p>
+                </div>
               </div>
-            ))}
-            {taskGroups.length > 3 && (
-              <div className="text-center">
-                <Link
-                  href={`/dashboard/projects/${project.id}/tasks`}
-                  className="inline-flex items-center text-sm font-medium text-green-600 hover:text-green-700"
-                >
-                  Ver todos los grupos ({taskGroups.length})
+
+              <div className="flex items-start">
+                <div className="mr-4 mt-1 rounded-full bg-blue-100 p-2">
+                  <CheckSquare className="h-4 w-4 text-blue-600" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium">Tarea completada</p>
+                  <p className="text-xs text-gray-500">Hace 3 días</p>
+                </div>
+              </div>
+
+              <div className="flex items-start">
+                <div className="mr-4 mt-1 rounded-full bg-purple-100 p-2">
+                  <Users className="h-4 w-4 text-purple-600" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium">Nuevo miembro añadido</p>
+                  <p className="text-xs text-gray-500">Hace 5 días</p>
+                </div>
+              </div>
+
+              <Link href="#" className="block text-center text-sm font-medium text-green-600 hover:text-green-700">
+                Ver toda la actividad
+              </Link>
+            </div>
+          </div>
+
+          <div className="mt-6">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-xl font-semibold text-gray-800">Próximos Eventos</h2>
+            </div>
+            <div className="rounded-lg border bg-white p-6 shadow-sm">
+              <div className="space-y-4">
+                <div className="flex items-start">
+                  <div className="mr-4 mt-1 rounded-full bg-yellow-100 p-2">
+                    <Calendar className="h-4 w-4 text-yellow-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium">Reunión de equipo</p>
+                    <p className="text-xs text-gray-500">Mañana, 10:00 AM</p>
+                  </div>
+                </div>
+
+                <div className="flex items-start">
+                  <div className="mr-4 mt-1 rounded-full bg-red-100 p-2">
+                    <Bell className="h-4 w-4 text-red-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium">Fecha límite del proyecto</p>
+                    <p className="text-xs text-gray-500">En 3 días</p>
+                  </div>
+                </div>
+
+                <Link href="#" className="block text-center text-sm font-medium text-green-600 hover:text-green-700">
+                  Ver calendario
                 </Link>
               </div>
-            )}
+            </div>
           </div>
-        )}
+        </div>
       </div>
     </div>
   )

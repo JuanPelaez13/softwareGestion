@@ -5,8 +5,15 @@ import type React from "react"
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { getProjectById, updateProject, deleteProject } from "@/lib/projects"
-import { ArrowLeft, Trash2 } from "lucide-react"
+import {
+  getProjectById,
+  updateProject,
+  deleteProject,
+  addProjectCollaborator,
+  removeProjectCollaborator,
+} from "@/lib/projects"
+import { getAllUsers } from "@/lib/tasks"
+import { ArrowLeft, Trash2, UserPlus, X } from "lucide-react"
 import { use } from "react"
 
 export default function EditProjectPage({
@@ -27,6 +34,11 @@ export default function EditProjectPage({
   const [error, setError] = useState("")
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
+  // Añadir estado para colaboradores
+  const [users, setUsers] = useState<any[]>([])
+  const [collaborators, setCollaborators] = useState<any[]>([])
+  const [showCollaboratorSelector, setShowCollaboratorSelector] = useState(false)
+
   useEffect(() => {
     async function loadProject() {
       if (isNaN(projectId)) {
@@ -39,6 +51,10 @@ export default function EditProjectPage({
 
         if (result.success) {
           setProject(result.project)
+          // Guardar los colaboradores
+          if (result.project.collaborators) {
+            setCollaborators(result.project.collaborators)
+          }
         } else {
           router.push("/dashboard/projects")
         }
@@ -50,7 +66,19 @@ export default function EditProjectPage({
       }
     }
 
+    async function loadUsers() {
+      try {
+        const result = await getAllUsers()
+        if (result.success) {
+          setUsers(result.users)
+        }
+      } catch (error) {
+        console.error("Error loading users:", error)
+      }
+    }
+
     loadProject()
+    loadUsers()
   }, [projectId, router])
 
   // Función para formatear fechas de manera segura
@@ -148,6 +176,40 @@ export default function EditProjectPage({
       console.error(error)
       setIsDeleting(false)
       setShowDeleteConfirm(false)
+    }
+  }
+
+  // Añadir funciones para gestionar colaboradores
+  const addCollaborator = async (userId: number) => {
+    try {
+      const result = await addProjectCollaborator(projectId, userId)
+      if (result.success) {
+        // Actualizar la lista de colaboradores
+        const userToAdd = users.find((u) => u.id === userId)
+        if (userToAdd && !collaborators.some((c) => c.id === userId)) {
+          setCollaborators([...collaborators, userToAdd])
+        }
+      } else {
+        setError(result.error || "Error al añadir colaborador")
+      }
+    } catch (error) {
+      console.error("Error adding collaborator:", error)
+      setError("Error al añadir colaborador")
+    }
+  }
+
+  const removeCollaborator = async (userId: number) => {
+    try {
+      const result = await removeProjectCollaborator(projectId, userId)
+      if (result.success) {
+        // Actualizar la lista de colaboradores
+        setCollaborators(collaborators.filter((c) => c.id !== userId))
+      } else {
+        setError(result.error || "Error al eliminar colaborador")
+      }
+    } catch (error) {
+      console.error("Error removing collaborator:", error)
+      setError("Error al eliminar colaborador")
     }
   }
 
@@ -254,6 +316,89 @@ export default function EditProjectPage({
                 className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-green-500 focus:outline-none focus:ring-green-500"
               />
             </div>
+          </div>
+
+          <div className="mt-6">
+            <label className="block text-sm font-medium text-gray-700">Colaboradores</label>
+
+            {project && project.is_owner ? (
+              <>
+                <div className="mt-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowCollaboratorSelector(!showCollaboratorSelector)}
+                    className="flex items-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
+                  >
+                    <UserPlus className="mr-2 h-4 w-4" />
+                    {showCollaboratorSelector ? "Ocultar selector" : "Gestionar colaboradores"}
+                  </button>
+                </div>
+
+                {/* Lista de colaboradores actuales */}
+                {collaborators.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {collaborators.map((user) => (
+                      <div
+                        key={user.id}
+                        className="flex items-center rounded-full bg-blue-100 px-3 py-1 text-sm text-blue-800"
+                      >
+                        {user.name}
+                        <button
+                          type="button"
+                          onClick={() => removeCollaborator(user.id)}
+                          className="ml-1 rounded-full p-1 text-blue-600 hover:bg-blue-200 hover:text-blue-800"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Selector de colaboradores */}
+                {showCollaboratorSelector && (
+                  <div className="mt-2 max-h-60 overflow-y-auto rounded-md border border-gray-300 bg-white p-2">
+                    {users.length > 0 ? (
+                      <ul className="space-y-1">
+                        {users
+                          .filter((user) => !collaborators.some((c) => c.id === user.id))
+                          .map((user) => (
+                            <li key={user.id}>
+                              <button
+                                type="button"
+                                onClick={() => addCollaborator(user.id)}
+                                className="flex w-full items-center justify-between rounded-md p-2 text-left hover:bg-gray-50"
+                              >
+                                <span>
+                                  {user.name} ({user.email})
+                                </span>
+                                <UserPlus className="h-4 w-4 text-green-600" />
+                              </button>
+                            </li>
+                          ))}
+                      </ul>
+                    ) : (
+                      <p className="text-center text-sm text-gray-500">No hay usuarios disponibles</p>
+                    )}
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="mt-2">
+                {collaborators.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {collaborators.map((user) => (
+                      <div key={user.id} className="rounded-full bg-blue-100 px-3 py-1 text-sm text-blue-800">
+                        {user.name}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-600">No hay colaboradores</p>
+                )}
+                <p className="mt-1 text-xs text-gray-500">Solo el propietario puede gestionar colaboradores</p>
+              </div>
+            )}
           </div>
 
           <div>

@@ -7,14 +7,14 @@ import { usePathname } from "next/navigation"
 import {
   LayoutDashboard,
   FolderKanban,
-  CheckSquare,
-  BarChart3,
-  Users,
   Settings,
   ChevronLeft,
   ChevronRight,
   PlusCircle,
   Shield,
+  Users,
+  Calendar,
+  BarChart2,
 } from "lucide-react"
 
 export function Sidebar() {
@@ -73,13 +73,13 @@ export function Sidebar() {
       href: "/dashboard/projects",
     },
     {
-      title: "Tareas",
-      icon: <CheckSquare className="h-5 w-5" />,
-      href: "/dashboard/tasks",
+      title: "Calendario",
+      icon: <Calendar className="h-5 w-5" />,
+      href: "/dashboard/calendar",
     },
     {
-      title: "Informes",
-      icon: <BarChart3 className="h-5 w-5" />,
+      title: "Reportes",
+      icon: <BarChart2 className="h-5 w-5" />,
       href: "/dashboard/reports",
     },
     {
@@ -105,7 +105,7 @@ export function Sidebar() {
 
   return (
     <div className="relative flex h-screen">
-      <div className={`bg-white border-r transition-all duration-300 ${collapsed ? "w-20" : "w-64"}`}>
+      <div className={`bg-white border-r transition-all duration-300 ${collapsed ? "w-20" : "w-64"} overflow-y-auto`}>
         <div className="flex h-16 items-center justify-center border-b">
           {collapsed ? (
             <Image src="/edusqa-logo.png" alt="EDU SQA Logo" width={40} height={40} className="rounded-md" />
